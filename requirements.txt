@@ -1,0 +1,12 @@
+pdfplumber
+reportlab
+opencv-python
+mediapipe
+gtts
+python-dotenv
+PyPDF2
+streamlit
+groq
+openai
+numpy
+python-docx
