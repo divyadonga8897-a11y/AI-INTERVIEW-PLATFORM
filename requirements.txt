@@ -1,6 +1,6 @@
 pdfplumber
 reportlab
-opencv-python
+opencv-python-headless
 mediapipe
 gtts
 python-dotenv
