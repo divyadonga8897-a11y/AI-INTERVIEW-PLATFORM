@@ -1,8 +1,6 @@
 import streamlit as st
 import os
 import time
-import cv2
-import numpy as np
 from datetime import datetime
 import sqlite3
 from reportlab.lib import colors
@@ -17,7 +15,6 @@ from utils.resume_parser import extract_text_from_pdf, parse_resume_to_json
 from utils.ats_engine import analyze_resume_ats
 from utils.resume_builder import enhance_bullet_point, generate_pdf_resume
 from utils.audio_handler import generate_tts_audio, process_and_transcribe_mic
-from utils.video_handler import VideoAnalyzer
 from utils.interview_engine import generate_interview_questions, evaluate_candidate_answer, compile_final_interview_report
 
 # Ensure assets directories exist
@@ -226,6 +223,125 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# --- Creator Pop-up Toast (bottom-right) ---
+st.markdown("""
+    <style>
+        /* Creator Toast Popup */
+        #creator-toast {
+            position: fixed;
+            bottom: 28px;
+            right: 28px;
+            z-index: 99999;
+            animation: slideInToast 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards,
+                       fadeOutToast 0.5s ease 6s forwards;
+            pointer-events: auto;
+        }
+
+        .creator-card {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border: 1px solid rgba(99, 102, 241, 0.4);
+            border-radius: 16px;
+            padding: 14px 18px 14px 14px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5),
+                        0 0 0 1px rgba(99,102,241,0.15),
+                        inset 0 1px 0 rgba(255,255,255,0.05);
+            min-width: 220px;
+            max-width: 280px;
+            backdrop-filter: blur(12px);
+        }
+
+        .creator-avatar {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #06b6d4 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+            box-shadow: 0 0 16px rgba(99, 102, 241, 0.5);
+            animation: glowPulse 2.5s ease-in-out infinite;
+        }
+
+        .creator-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .creator-label {
+            font-size: 10px;
+            color: #6366f1;
+            font-weight: 600;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            font-family: 'Outfit', sans-serif;
+            margin-bottom: 2px;
+        }
+
+        .creator-name {
+            font-size: 16px;
+            font-weight: 700;
+            color: #f1f5f9;
+            font-family: 'Outfit', sans-serif;
+            letter-spacing: 0.3px;
+        }
+
+        .creator-tag {
+            font-size: 11px;
+            color: #64748b;
+            font-family: 'Outfit', sans-serif;
+            margin-top: 1px;
+        }
+
+        .close-toast {
+            background: none;
+            border: none;
+            color: #475569;
+            cursor: pointer;
+            font-size: 16px;
+            padding: 0;
+            line-height: 1;
+            flex-shrink: 0;
+            transition: color 0.2s;
+        }
+
+        .close-toast:hover {
+            color: #94a3b8;
+        }
+
+        @keyframes slideInToast {
+            0%   { transform: translateX(120px); opacity: 0; }
+            100% { transform: translateX(0);     opacity: 1; }
+        }
+
+        @keyframes fadeOutToast {
+            0%   { opacity: 1; transform: translateX(0); }
+            100% { opacity: 0; transform: translateX(30px); pointer-events: none; }
+        }
+
+        @keyframes glowPulse {
+            0%, 100% { box-shadow: 0 0 10px rgba(99,102,241,0.4); }
+            50%       { box-shadow: 0 0 22px rgba(139,92,246,0.7); }
+        }
+    </style>
+
+    <div id="creator-toast">
+        <div class="creator-card">
+            <div class="creator-avatar">👩‍💻</div>
+            <div class="creator-info">
+                <div class="creator-label">✦ Built by</div>
+                <div class="creator-name">Divya</div>
+                <div class="creator-tag">AI Placement Advisor</div>
+            </div>
+            <button class="close-toast" onclick="document.getElementById('creator-toast').style.display='none'">✕</button>
+        </div>
+    </div>
+""", unsafe_allow_html=True)
+
 # DB Initialise
 try:
     init_db()
@@ -259,12 +375,6 @@ if "active_tts_file" not in st.session_state:
     st.session_state.active_tts_file = ""
 if "webcam_enabled" not in st.session_state:
     st.session_state.webcam_enabled = False
-if "eye_contact_history" not in st.session_state:
-    st.session_state.eye_contact_history = []
-if "confidence_history" not in st.session_state:
-    st.session_state.confidence_history = []
-if "expressions_history" not in st.session_state:
-    st.session_state.expressions_history = []
 if "final_evaluation" not in st.session_state:
     st.session_state.final_evaluation = {}
 
@@ -440,7 +550,7 @@ with tabs[0]:
             weaknesses = report.get("weaknesses", [])
             if weaknesses:
                 for w in weaknesses:
-                    st.markdown(f"<span style='color: #f59e0b;'>⚠️</span> {w}")
+                    st.markdown(f"⚠️ {w}")
             else:
                 st.markdown("<span style='color: #10b981;'>✓ No layout or content weaknesses detected. Great job!</span>", unsafe_allow_html=True)
                 
@@ -752,7 +862,6 @@ with tabs[2]:
     # ------------------ LEFT PANEL ------------------
     with left_panel:
         st.subheader("📄 Resume Intelligence")
-        st.write(f"**Candidate:** {st.session_state.parsed_resume.get('full_name', 'Student')}")
         
         # Scan Info Summary
         skills_found = st.session_state.parsed_resume.get("skills", [])
@@ -820,7 +929,6 @@ with tabs[2]:
                 st.session_state.interview_questions = []
                 st.session_state.interview_transcript = []
                 st.session_state.current_question_idx = 0
-                st.session_state.webcam_enabled = False
                 st.session_state.interviewer_state = "listening"
                 st.rerun()
                 
@@ -882,42 +990,7 @@ with tabs[2]:
         """, unsafe_allow_html=True)
         st.write("")
         
-        # 2. Camera HUD Feed (Accesses cv2 capture and draws overlays)
-        st.session_state.webcam_enabled = st.checkbox("Toggle Webcam Feed (Live Analysis HUD)", value=st.session_state.webcam_enabled)
-        
-        camera_placeholder = st.empty()
-        
-        # OpenCV Loop processing
-        if st.session_state.webcam_enabled and st.session_state.interview_status != "NOT_STARTED" and st.session_state.interviewer_state == "listening":
-            cap = cv2.VideoCapture(0)
-            if cap.isOpened():
-                analyzer = VideoAnalyzer()
-                # Run for a few frames to populate camera window or render continuously
-                # To prevent blocking streamlit indefinitely, we run a short 5-frame loop to render
-                # and save metrics in accumulator.
-                for _ in range(5):
-                    ret, frame = cap.read()
-                    if ret:
-                        # Process frame
-                        frame_hud, met = analyzer.analyze_frame(frame)
-                        
-                        # Accumulate visual statistics in lists
-                        st.session_state.eye_contact_history.append(met['eye_contact'])
-                        st.session_state.confidence_history.append(met['confidence_score'])
-                        st.session_state.expressions_history.append(met['expression'])
-                        
-                        # Display
-                        camera_placeholder.image(frame_hud, channels="BGR", use_container_width=True)
-                        time.sleep(0.05)
-                cap.release()
-            else:
-                camera_placeholder.error("Webcam not accessible or blocked by another process. Falled back to premium avatar mode.")
-        elif st.session_state.webcam_enabled:
-            # Display camera static scanning frame
-            dummy_img = np.zeros((240, 320, 3), dtype=np.uint8)
-            cv2.putText(dummy_img, "Webcam Standby (Awaiting Response Round)", (20, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 165, 255), 1)
-            camera_placeholder.image(dummy_img, channels="BGR", use_container_width=True)
-            
+
         st.markdown("---")
         
         # 3. Live Question Text & TTS Audio Trigger
@@ -970,16 +1043,10 @@ with tabs[2]:
                                 st.session_state.api_provider
                             )
                             
-                        # Add video analysis metrics if recorded
-                        avg_eye = int(np.mean(st.session_state.eye_contact_history)) if st.session_state.eye_contact_history else 95
-                        avg_conf_v = int(np.mean(st.session_state.confidence_history)) if st.session_state.confidence_history else 90
-                        
-                        # Find most frequent expression
+                        # Add default visual metrics (webcam removed)
+                        avg_eye = 95
+                        avg_conf_v = 90
                         expr = "Neutral"
-                        if st.session_state.expressions_history:
-                            from collections import Counter
-                            c = Counter(st.session_state.expressions_history)
-                            expr = c.most_common(1)[0][0]
                             
                         # Set custom evaluation details
                         evaluation["user_answer"] = transcript
@@ -1015,11 +1082,6 @@ with tabs[2]:
                             
                         # Update local transcript in session state
                         st.session_state.interview_transcript.append(evaluation)
-                        
-                        # Reset trackers
-                        st.session_state.eye_contact_history = []
-                        st.session_state.confidence_history = []
-                        st.session_state.expressions_history = []
                         
                         # Move index or evaluate eligibility rules
                         next_idx = curr_idx + 1
